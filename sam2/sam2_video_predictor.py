@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 from collections import OrderedDict
 
 import torch
@@ -16,6 +17,7 @@ from sam2.utils.misc import (
     fill_holes_in_mask_scores,
     load_video_frames,
     load_video_frames_from_file,
+    process_video_frames,
 )
 
 
@@ -43,27 +45,34 @@ class SAM2VideoPredictor(SAM2Base):
     @torch.inference_mode()
     def init_state(
         self,
-        video_path,
+        video,
         offload_video_to_cpu=False,
         offload_state_to_cpu=False,
         async_loading_frames=False,
     ):
         """Initialize a inference state."""
-        if video_path.endswith((".mp4", ".avi", ".mov")):
-            images, video_height, video_width = load_video_frames_from_file(
-                video_path=video_path,
+        if isinstance(video, list):
+            images, video_height, video_width = process_video_frames(
+                video,
                 image_size=self.image_size,
                 offload_video_to_cpu=offload_video_to_cpu,
             )
-        elif os.path.isdir(video_path):
+        if isinstance(video, str) and video.endswith((".mp4", ".avi", ".mov")):
+            images, video_height, video_width = load_video_frames_from_file(
+                video_path=video,
+                image_size=self.image_size,
+                offload_video_to_cpu=offload_video_to_cpu,
+            )
+        elif isinstance(video, str) and os.path.isdir(video):
             images, video_height, video_width = load_video_frames(
-                video_path=video_path,
+                video_path=video,
                 image_size=self.image_size,
                 offload_video_to_cpu=offload_video_to_cpu,
                 async_loading_frames=async_loading_frames,
             )
         else:
-            raise ValueError("Unsupported video format: %s" % video_path)
+            raise ValueError("Unsupported video format: %s" % video)
+
         inference_state = {}
         inference_state["images"] = images
         inference_state["num_frames"] = len(images)
