@@ -107,7 +107,15 @@ class AsyncVideoFrameLoader:
     A list of video frames to be load asynchronously without blocking session start.
     """
 
-    def __init__(self, img_paths, image_size, offload_video_to_cpu, img_mean, img_std):
+    def __init__(
+        self,
+        img_paths,
+        image_size,
+        offload_video_to_cpu,
+        img_mean,
+        img_std,
+        compute_device,
+    ):
         self.img_paths = img_paths
         self.image_size = image_size
         self.offload_video_to_cpu = offload_video_to_cpu
@@ -120,6 +128,7 @@ class AsyncVideoFrameLoader:
         # video_height and video_width be filled when loading the first image
         self.video_height = None
         self.video_width = None
+        self.compute_device = compute_device
 
         # load the first frame to fill video_height and video_width and also
         # to cache it (since it's most likely where the user will click)
@@ -153,7 +162,7 @@ class AsyncVideoFrameLoader:
         img -= self.img_mean
         img /= self.img_std
         if not self.offload_video_to_cpu:
-            img = img.cuda(non_blocking=True)
+            img = img.to(self.compute_device, non_blocking=True)
         self.images[index] = img
         return img
 
@@ -172,11 +181,14 @@ def process_video_frames(
         raise ValueError("Could not read frames from video file")
     video_width, video_height = Image.fromarray(frames[0]).size
     num_frames = len(frames)
-    frames = [Image.fromarray(frame).convert("RGB").resize((image_size, image_size)) for frame in frames]
+    frames = [
+        Image.fromarray(frame).convert("RGB").resize((image_size, image_size))
+        for frame in frames
+    ]
     images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
     for i, frame in enumerate(frames):
         np_frame = np.array(frame)
-        np_frame = np_frame / 255.
+        np_frame = np_frame / 255.0
         images[i] = torch.from_numpy(np_frame).permute(2, 0, 1)
 
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
@@ -210,7 +222,6 @@ def load_video_frames_from_file(
     )
 
 
-
 def load_video_frames(
     video_path,
     image_size,
@@ -218,6 +229,7 @@ def load_video_frames(
     img_mean=(0.485, 0.456, 0.406),
     img_std=(0.229, 0.224, 0.225),
     async_loading_frames=False,
+    compute_device=torch.device("cuda"),
 ):
     """
     Load the video frames from a directory of JPEG files ("<frame_index>.jpg" format).
@@ -230,7 +242,15 @@ def load_video_frames(
     if isinstance(video_path, str) and os.path.isdir(video_path):
         jpg_folder = video_path
     else:
-        raise NotImplementedError("Only JPEG frames are supported at this moment")
+        raise NotImplementedError(
+            "Only JPEG frames are supported at this moment. For video files, you may use "
+            "ffmpeg (https://ffmpeg.org/) to extract frames into a folder of JPEG files, such as \n"
+            "```\n"
+            "ffmpeg -i <your_video>.mp4 -q:v 2 -start_number 0 <output_dir>/'%05d.jpg'\n"
+            "```\n"
+            "where `-q:v` generates high-quality JPEG frames and `-start_number 0` asks "
+            "ffmpeg to start the JPEG file from 00000.jpg."
+        )
 
     frame_names = [
         p
@@ -247,7 +267,12 @@ def load_video_frames(
 
     if async_loading_frames:
         lazy_images = AsyncVideoFrameLoader(
-            img_paths, image_size, offload_video_to_cpu, img_mean, img_std
+            img_paths,
+            image_size,
+            offload_video_to_cpu,
+            img_mean,
+            img_std,
+            compute_device,
         )
         return lazy_images, lazy_images.video_height, lazy_images.video_width
 
@@ -255,9 +280,9 @@ def load_video_frames(
     for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
         images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
     if not offload_video_to_cpu:
-        images = images.cuda()
-        img_mean = img_mean.cuda()
-        img_std = img_std.cuda()
+        images = images.to(compute_device)
+        img_mean = img_mean.to(compute_device)
+        img_std = img_std.to(compute_device)
     # normalize by mean and std
     images -= img_mean
     images /= img_std
@@ -281,8 +306,9 @@ def fill_holes_in_mask_scores(mask, max_area):
     except Exception as e:
         # Skip the post-processing step on removing small holes if the CUDA kernel fails
         warnings.warn(
-            f"{e}\n\nSkipping the post-processing step due to the error above. "
-            "Consider building SAM 2 with CUDA extension to enable post-processing (see "
+            f"{e}\n\nSkipping the post-processing step due to the error above. You can "
+            "still use SAM 2 and it's OK to ignore the error above, although some post-processing "
+            "functionality may be limited (which doesn't affect the results in most cases; see "
             "https://github.com/facebookresearch/segment-anything-2/blob/main/INSTALL.md).",
             category=UserWarning,
             stacklevel=2,
