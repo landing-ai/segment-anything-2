@@ -18,7 +18,6 @@ from sam2.utils.misc import (
     concat_points,
     fill_holes_in_mask_scores,
     load_video_frames,
-    load_video_frames_from_file,
     process_video_frames,
 )
 
