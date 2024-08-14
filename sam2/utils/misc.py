@@ -10,7 +10,6 @@ from threading import Thread
 
 import numpy as np
 import torch
-import cv2
 from PIL import Image
 from tqdm import tqdm
 
@@ -201,25 +200,6 @@ def process_video_frames(
     images -= img_mean
     images /= img_std
     return images, video_height, video_width
-
-
-def load_video_frames_from_file(
-    video_path,
-    image_size,
-    offload_video_to_cpu,
-    img_mean=(0.485, 0.456, 0.406),
-    img_std=(0.229, 0.224, 0.225),
-):
-    frames = []
-    vid_cap = cv2.VideoCapture(video_path)
-    success, frame = vid_cap.read()
-    while success:
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(frame)
-        success, frame = vid_cap.read()
-    return process_video_frames(
-        frames, image_size, offload_video_to_cpu, img_mean=img_mean, img_std=img_std
-    )
 
 
 def load_video_frames(

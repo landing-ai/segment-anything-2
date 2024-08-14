@@ -60,12 +60,6 @@ class SAM2VideoPredictor(SAM2Base):
                 image_size=self.image_size,
                 offload_video_to_cpu=offload_video_to_cpu,
             )
-        elif isinstance(video, str) and video.endswith((".mp4", ".avi", ".mov")):
-            images, video_height, video_width = load_video_frames_from_file(
-                video_path=video,
-                image_size=self.image_size,
-                offload_video_to_cpu=offload_video_to_cpu,
-            )
         elif isinstance(video, str) and os.path.isdir(video):
             images, video_height, video_width = load_video_frames(
                 video_path=video,
